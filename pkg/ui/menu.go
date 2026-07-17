@@ -135,13 +135,20 @@ func SelectAppInteractive(apps []*app.AppConfig) (int, error) {
 
 // SelectOperation displays operations available for an app.
 func SelectOperation(appName string) (string, error) {
-	ops := []string{"switch", "save", "list", "delete", "status"}
+	ops := []string{"switch", "save", "list", "delete", "status", "checkin"}
 	opLabels := []string{
 		"切换账号   (切换到已保存的账号)",
 		"保存账号   (保存当前登录态)",
 		"列出账号   (查看该应用下的所有备份)",
 		"删除账号   (删除某个账号备份)",
 		"查看状态   (查看该应用当前的登录状态)",
+	}
+	if strings.Contains(appName, "QoderWork") {
+		opLabels = append(opLabels, "批量签到   (QoderWork CN 所有账号签到)")
+	} else {
+		// Just to align indices if not QoderWork, although ops is static, 
+		// we'll handle the selection based on actual length of opLabels.
+		ops = []string{"switch", "save", "list", "delete", "status"}
 	}
 
 	idx := 0

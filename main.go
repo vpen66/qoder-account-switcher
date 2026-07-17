@@ -20,6 +20,7 @@ func printHelp() {
 	fmt.Println("  qoder-switch switch <别名>        切换到指定账号")
 	fmt.Println("  qoder-switch delete <别名>        删除某个账号备份")
 	fmt.Println("  qoder-switch status               显示应用的登录状态")
+	fmt.Println("  qoder-switch checkin              批量签到 QoderWork CN 所有已保存账号")
 	fmt.Println("  qoder-switch help                 显示此帮助信息")
 }
 
@@ -81,6 +82,12 @@ func main() {
 		cmdDelete(apps, alias, appType)
 	case "status", "stat":
 		cmdStatus(apps)
+	case "checkin":
+		appType := "qoderwork"
+		if len(args) > 1 {
+			appType = args[1]
+		}
+		cmdCheckin(apps, appType)
 	default:
 		fmt.Printf("[WARN] 未知命令: %s\n", args[0])
 		printHelp()
@@ -463,6 +470,15 @@ func runInteractive(apps []*app.AppConfig) {
 					return
 				}
 
+			case "checkin":
+				ui.ClearScreen()
+				cmdCheckin(apps, targetApp.Type)
+				key, _ := ui.DrawOutputFooter()
+				if key == ui.KeyQuit {
+					ui.ClearScreen()
+					fmt.Println("\n[INFO] 再见！")
+					return
+				}
 			case "delete":
 				alias, err := ui.SelectAccountInteractive(targetApp)
 				if err != nil || alias == "back" || alias == "" {
@@ -494,3 +510,22 @@ func runInteractive(apps []*app.AppConfig) {
 		}
 	}
 }
+
+// cmdCheckin handles batch check-in for qoderwork accounts.
+func cmdCheckin(apps []*app.AppConfig, appType string) {
+	if appType != "qoderwork" {
+		fmt.Printf("[ERROR] 目前批量签到功能仅支持 qoderwork (QoderWork CN)\n")
+		return
+	}
+	var targetApp *app.AppConfig
+	for _, a := range apps {
+		if a.Type == appType {
+			targetApp = a
+			break
+		}
+	}
+	if targetApp != nil {
+		app.BatchCheckinQoderWork(targetApp)
+	}
+}
+
