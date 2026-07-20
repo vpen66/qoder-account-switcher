@@ -152,14 +152,25 @@ func BatchCheckinQoderWork(c *AppConfig) {
 	fmt.Println("============================================")
 }
 
+func setRealHeaders(req *http.Request, token string) {
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	// 模仿真实的 Electron 客户端 User-Agent 以防止风控
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) QoderWork/0.9.12 Chrome/114.0.5735.289 Electron/25.9.8 Safari/537.36")
+	req.Header.Set("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7")
+	req.Header.Set("Sec-Fetch-Dest", "empty")
+	req.Header.Set("Sec-Fetch-Mode", "cors")
+	req.Header.Set("Sec-Fetch-Site", "same-site")
+}
+
 func checkinStatus(client *http.Client, token string) (string, error) {
 	req, err := http.NewRequest("GET", statusAPI, nil)
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "qoderwork-account-switcher/1.0")
+	setRealHeaders(req, token)
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -189,10 +200,8 @@ func claimCheckin(client *http.Client, token string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
+	setRealHeaders(req, token)
 	req.Header.Set("Content-Length", "0")
-	req.Header.Set("User-Agent", "qoderwork-account-switcher/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -219,9 +228,8 @@ func refreshToken(client *http.Client, rToken string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	setRealHeaders(req, "")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "qoderwork-account-switcher/1.0")
 
 	resp, err := client.Do(req)
 	if err != nil {
