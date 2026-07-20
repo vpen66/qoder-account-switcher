@@ -128,7 +128,7 @@ func cmdSave(apps []*app.AppConfig, alias, appType string) {
 		if err == nil && meta.Name != "" {
 			defaultAlias = meta.Name
 		}
-		
+
 		prompt := "请输入账号别名: "
 		if defaultAlias != "" {
 			prompt = fmt.Sprintf("请输入账号别名（默认: %s）: ", defaultAlias)
@@ -254,7 +254,7 @@ func cmdList(apps []*app.AppConfig) {
 		fmt.Println()
 		fmt.Printf("\033[1m%s — 已保存的账号\033[0m\n", targetApp.Name)
 		fmt.Println("--------------------------------------------")
-		
+
 		accounts, err := ui.GetSavedAccounts(targetApp)
 		if err != nil {
 			fmt.Printf("  读取失败: %v\n", err)
@@ -339,7 +339,7 @@ func cmdStatus(apps []*app.AppConfig) {
 		fmt.Println()
 		fmt.Printf("  \033[1;32m%s\033[0m\n", targetApp.Name)
 		fmt.Println("  ------------------------------------")
-		
+
 		if targetApp.IsInstalled() {
 			fmt.Println("  安装状态:       \033[32m是\033[0m")
 		} else {
@@ -430,13 +430,13 @@ func runInteractive(apps []*app.AppConfig) {
 			case "save":
 				ui.ClearScreen()
 				fmt.Print("\033[?25h")
-				
+
 				defaultAlias := ""
 				meta, err := targetApp.GetCurrentAccountMeta()
 				if err == nil && meta.Name != "" {
 					defaultAlias = meta.Name
 				}
-				
+
 				prompt := "请输入新账号别名: "
 				if defaultAlias != "" {
 					prompt = fmt.Sprintf("请输入新账号别名（默认: %s）: ", defaultAlias)
@@ -554,7 +554,7 @@ func cmdUpdate() {
 	fmt.Println()
 	fmt.Println("[INFO] 正在获取最新版本并安装...")
 
-	cmd := exec.Command("bash", "-c", "curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/main/install.sh | bash")
+	cmd := exec.Command("bash", "-c", "curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/master/install.sh | bash")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
@@ -562,7 +562,6 @@ func cmdUpdate() {
 	if err != nil {
 		fmt.Printf("\n[ERROR] 更新执行失败: %v\n", err)
 		fmt.Println("[HINT] 如果你的环境不支持自动更新，请手动在终端（macOS）或 Git Bash（Windows）中运行以下命令：")
-		fmt.Println("       curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/main/install.sh | bash")
+		fmt.Println("       curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/master/install.sh | bash")
 	}
 }
-
