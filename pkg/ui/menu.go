@@ -151,6 +151,9 @@ func SelectOperation(appName string) (string, error) {
 		ops = []string{"switch", "save", "list", "delete", "status"}
 	}
 
+	opLabels = append(opLabels, "在线更新   (将本工具更新到最新版)")
+	ops = append(ops, "update")
+
 	idx := 0
 	for {
 		ClearScreen()

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ func printHelp() {
 	fmt.Println("  qoder-switch delete <别名>        删除某个账号备份")
 	fmt.Println("  qoder-switch status               显示应用的登录状态")
 	fmt.Println("  qoder-switch checkin              批量签到 QoderWork CN 所有已保存账号")
+	fmt.Println("  qoder-switch update               在线更新本工具到最新版")
 	fmt.Println("  qoder-switch help                 显示此帮助信息")
 }
 
@@ -88,6 +90,8 @@ func main() {
 			appType = args[1]
 		}
 		cmdCheckin(apps, appType)
+	case "update":
+		cmdUpdate()
 	default:
 		fmt.Printf("[WARN] 未知命令: %s\n", args[0])
 		printHelp()
@@ -506,6 +510,19 @@ func runInteractive(apps []*app.AppConfig) {
 					fmt.Println("\n[INFO] 再见！")
 					return
 				}
+
+			case "update":
+				ui.ClearScreen()
+				fmt.Print("\033[?25h")
+				cmdUpdate()
+				fmt.Print("\033[?25l")
+
+				key, _ := ui.DrawOutputFooter()
+				if key == ui.KeyQuit {
+					ui.ClearScreen()
+					fmt.Println("\n[INFO] 再见！")
+					return
+				}
 			}
 		}
 	}
@@ -526,6 +543,26 @@ func cmdCheckin(apps []*app.AppConfig, appType string) {
 	}
 	if targetApp != nil {
 		app.BatchCheckinQoderWork(targetApp)
+	}
+}
+
+// cmdUpdate handles self-updating the application.
+func cmdUpdate() {
+	fmt.Println("\033[1m============================================\033[0m")
+	fmt.Println("\033[1m  在线更新 Qoder Account Switcher\033[0m")
+	fmt.Println("\033[1m============================================\033[0m")
+	fmt.Println()
+	fmt.Println("[INFO] 正在获取最新版本并安装...")
+
+	cmd := exec.Command("bash", "-c", "curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/main/install.sh | bash")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+	err := cmd.Run()
+	if err != nil {
+		fmt.Printf("\n[ERROR] 更新执行失败: %v\n", err)
+		fmt.Println("[HINT] 如果你的环境不支持自动更新，请手动在终端（macOS）或 Git Bash（Windows）中运行以下命令：")
+		fmt.Println("       curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/main/install.sh | bash")
 	}
 }
 
