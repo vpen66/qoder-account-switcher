@@ -56,33 +56,19 @@ func CopyFile(src, dst string) error {
 
 // HasLoginState checks if the application currently has a logged-in state.
 func (c *AppConfig) HasLoginState() bool {
-	// auth-v2.dat check
-	authV2Path := filepath.Join(c.AppDataDir, "auth-v2.dat")
-	if _, err := os.Stat(authV2Path); err == nil {
-		return true
+	for _, relPath := range c.Files {
+		if _, err := os.Stat(filepath.Join(c.AppDataDir, relPath)); err == nil {
+			return true
+		}
 	}
 
-	if c.Type == "qoderwork" {
-		authDatPath := filepath.Join(c.AppDataDir, "auth.dat")
-		if _, err := os.Stat(authDatPath); err == nil {
-			return true
-		}
-	} else if c.Type == "qodercn" {
-		// User/SharedClientCache/cache/user check
-		userCache := filepath.Join(c.AppDataDir, "SharedClientCache", "cache", "user")
-		if _, err := os.Stat(userCache); err == nil {
-			return true
-		}
-
-		// DB secret check
+	if c.Legacy {
+		// Legacy Qoder CN IDE keeps login secrets in state.vscdb
 		gsdbPath := filepath.Join(c.AppDataDir, "User", "globalStorage", "state.vscdb")
-		if _, err := os.Stat(gsdbPath); err == nil {
-			if sqliteDB, err := db.OpenDB(gsdbPath); err == nil {
-				defer sqliteDB.Close()
-				secrets, err := db.ReadSecrets(sqliteDB)
-				if err == nil && len(secrets) > 0 {
-					return true
-				}
+		if sqliteDB, err := db.OpenDB(gsdbPath); err == nil {
+			defer sqliteDB.Close()
+			if secrets, err := db.ReadSecrets(sqliteDB); err == nil && len(secrets) > 0 {
+				return true
 			}
 		}
 	}
@@ -100,7 +86,7 @@ func (c *AppConfig) ClearLoginState() error {
 		}
 	}
 
-	if c.Type == "qodercn" {
+	if c.Legacy {
 		// Clean SQLite state.vscdb
 		gsdbPath := filepath.Join(c.AppDataDir, "User", "globalStorage", "state.vscdb")
 		if sqliteDB, err := db.OpenDB(gsdbPath); err == nil {
@@ -146,9 +132,9 @@ func (c *AppConfig) SaveAccount(alias string) error {
 		}
 	}
 
-	// 2. Extra DB export for qodercn
+	// 2. Extra DB export for legacy Qoder CN IDE
 	var meta AccountMeta
-	if c.Type == "qodercn" {
+	if c.Legacy {
 		gsdbPath := filepath.Join(c.AppDataDir, "User", "globalStorage", "state.vscdb")
 		if err := c.exportSecrets(gsdbPath, filepath.Join(accountDir, "state.vscdb_secrets.txt")); err != nil {
 			return fmt.Errorf("failed to export state.vscdb secrets: %w", err)
@@ -164,10 +150,10 @@ func (c *AppConfig) SaveAccount(alias string) error {
 		}
 
 		// Decrypt metadata from state.vscdb and local.db
-		c.decryptQoderCNMeta(&meta)
-	} else if c.Type == "qoderwork" {
-		// Decrypt metadata from auth-v2.dat
-		c.decryptQoderWorkMeta(&meta)
+		c.decryptQoderCNLegacyMeta(&meta)
+	} else {
+		// Decrypt metadata from the auth file (auth.v1.dat / auth-v2.dat)
+		c.decryptAuthFileMeta(&meta)
 	}
 
 	// 3. Save meta info
@@ -178,12 +164,30 @@ func (c *AppConfig) SaveAccount(alias string) error {
 	return nil
 }
 
-// SwitchTo restores saved account from backup.
-func (c *AppConfig) SwitchTo(alias string) error {
+// ValidateBackup ensures the saved account can be restored into the current
+// app generation. Backups created by the legacy Qoder CN IDE (auth-v2.dat
+// without auth.v1.dat) are incompatible with the new Qoder CN app.
+func (c *AppConfig) ValidateBackup(alias string) error {
 	accountDir := c.GetAccountDir(alias)
 	if _, err := os.Stat(accountDir); os.IsNotExist(err) {
-		return fmt.Errorf("backup for account '%s' does not exist", alias)
+		return fmt.Errorf("备份 '%s' 不存在，请先保存", alias)
 	}
+	authBackup := filepath.Join(accountDir, c.AuthFile)
+	if _, err := os.Stat(authBackup); os.IsNotExist(err) {
+		if c.Type == "qodercn" && !c.Legacy {
+			return fmt.Errorf("备份 '%s' 缺少 %s，它可能是旧版 Qoder CN IDE 的备份，无法切换到新版 Qoder CN；请在新版应用中登录该账号后重新保存", alias, c.AuthFile)
+		}
+		return fmt.Errorf("备份 '%s' 缺少 %s，备份可能已损坏", alias, c.AuthFile)
+	}
+	return nil
+}
+
+// SwitchTo restores saved account from backup.
+func (c *AppConfig) SwitchTo(alias string) error {
+	if err := c.ValidateBackup(alias); err != nil {
+		return err
+	}
+	accountDir := c.GetAccountDir(alias)
 
 	// Ensure application is not running
 	if c.IsRunning() {
@@ -206,8 +210,8 @@ func (c *AppConfig) SwitchTo(alias string) error {
 		}
 	}
 
-	// 3. Extra DB import for qodercn
-	if c.Type == "qodercn" {
+	// 3. Extra DB import for legacy Qoder CN IDE
+	if c.Legacy {
 		gsdbPath := filepath.Join(c.AppDataDir, "User", "globalStorage", "state.vscdb")
 		if err := c.importSecrets(filepath.Join(accountDir, "state.vscdb_secrets.txt"), gsdbPath); err != nil {
 			return fmt.Errorf("failed to restore state.vscdb secrets: %w", err)
@@ -233,10 +237,10 @@ func (c *AppConfig) GetCurrentAccountMeta() (*AccountMeta, error) {
 	}
 
 	var meta AccountMeta
-	if c.Type == "qodercn" {
-		c.decryptQoderCNMeta(&meta)
-	} else if c.Type == "qoderwork" {
-		c.decryptQoderWorkMeta(&meta)
+	if c.Legacy {
+		c.decryptQoderCNLegacyMeta(&meta)
+	} else {
+		c.decryptAuthFileMeta(&meta)
 	}
 	return &meta, nil
 }
@@ -257,26 +261,30 @@ func (c *AppConfig) DeleteAccount(alias string) error {
 
 // IsCurrentAccount checks if the saved account is currently active.
 func (c *AppConfig) IsCurrentAccount(alias string) bool {
-	// First fallback: Compare auth-v2.dat files directly using md5 or size
-	authV2Backup := filepath.Join(c.GetAccountDir(alias), "auth-v2.dat")
-	authV2Current := filepath.Join(c.AppDataDir, "auth-v2.dat")
+	// First fallback: Compare auth files directly using byte equality
+	authBackup := filepath.Join(c.GetAccountDir(alias), c.AuthFile)
+	authCurrent := filepath.Join(c.AppDataDir, c.AuthFile)
 
-	b1, err1 := os.ReadFile(authV2Backup)
-	b2, err2 := os.ReadFile(authV2Current)
+	b1, err1 := os.ReadFile(authBackup)
+	b2, err2 := os.ReadFile(authCurrent)
 	if err1 == nil && err2 == nil {
 		if bytes.Equal(b1, b2) {
 			return true
 		}
 	}
 
-	// Second fallback for qodercn: compare user_id
-	if c.Type == "qodercn" {
-		meta, err := c.ReadMetaJSON(alias)
-		if err == nil && meta.UserID != "" {
-			currentUID := c.getCurrentQoderCNUserID()
-			if currentUID != "" && currentUID == meta.UserID {
-				return true
-			}
+	// Second fallback: compare user_id, because the app refreshes the token
+	// in the auth file so its bytes change while the account stays the same
+	meta, err := c.ReadMetaJSON(alias)
+	if err == nil && meta.UserID != "" {
+		currentUID := ""
+		if c.Legacy {
+			currentUID = c.getCurrentQoderCNUserID()
+		} else {
+			currentUID = c.getCurrentAuthUserID()
+		}
+		if currentUID != "" && currentUID == meta.UserID {
+			return true
 		}
 	}
 
@@ -419,7 +427,7 @@ func (c *AppConfig) importSupabaseToken(txtPath, dbPath string) error {
 	return db.WriteSupabaseTokens(sqliteDB, tokens)
 }
 
-func (c *AppConfig) decryptQoderCNMeta(meta *AccountMeta) {
+func (c *AppConfig) decryptQoderCNLegacyMeta(meta *AccountMeta) {
 	gsdbPath := filepath.Join(c.AppDataDir, "User", "globalStorage", "state.vscdb")
 	sqliteDB, err := db.OpenDB(gsdbPath)
 	if err != nil {
@@ -452,7 +460,7 @@ func (c *AppConfig) decryptQoderCNMeta(meta *AccountMeta) {
 			continue
 		}
 
-		decrypted, err := crypto.Decrypt(wrapper.Data, c.Name)
+		decrypted, err := crypto.Decrypt(wrapper.Data, c.CryptoService)
 		if err != nil {
 			continue
 		}
@@ -502,14 +510,17 @@ func (c *AppConfig) decryptQoderCNMeta(meta *AccountMeta) {
 	}
 }
 
-func (c *AppConfig) decryptQoderWorkMeta(meta *AccountMeta) {
-	authV2Path := filepath.Join(c.AppDataDir, "auth-v2.dat")
-	data, err := os.ReadFile(authV2Path)
+// decryptAuthFileMeta decrypts the auth file (auth.v1.dat for the new Qoder CN
+// app, auth-v2.dat for QoderWork CN) and fills account metadata. Both files
+// share the same JSON shape: token/refreshToken/expiresAt plus a user object.
+func (c *AppConfig) decryptAuthFileMeta(meta *AccountMeta) {
+	authPath := filepath.Join(c.AppDataDir, c.AuthFile)
+	data, err := os.ReadFile(authPath)
 	if err != nil {
 		return
 	}
 
-	decrypted, err := crypto.Decrypt(data, c.Name)
+	decrypted, err := crypto.Decrypt(data, c.CryptoService)
 	if err != nil {
 		return
 	}
@@ -539,10 +550,20 @@ func (c *AppConfig) decryptQoderWorkMeta(meta *AccountMeta) {
 		if meta.AvatarURL == "" {
 			meta.AvatarURL = getStringField(userObj, "imageUrl")
 		}
+		if meta.AvatarURL == "" {
+			meta.AvatarURL = getStringField(userObj, "avatarUrl")
+		}
 		if meta.PlanTier == "" {
 			meta.PlanTier = getStringField(userObj, "tier")
 		}
 	}
+}
+
+// getCurrentAuthUserID returns the user id in the currently active auth file.
+func (c *AppConfig) getCurrentAuthUserID() string {
+	var meta AccountMeta
+	c.decryptAuthFileMeta(&meta)
+	return meta.UserID
 }
 
 func (c *AppConfig) getCurrentQoderCNUserID() string {
@@ -564,7 +585,7 @@ func (c *AppConfig) getCurrentQoderCNUserID() string {
 		return ""
 	}
 
-	decrypted, err := crypto.Decrypt(wrapper.Data, c.Name)
+	decrypted, err := crypto.Decrypt(wrapper.Data, c.CryptoService)
 	if err != nil {
 		return ""
 	}

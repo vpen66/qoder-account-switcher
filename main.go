@@ -1,7 +1,9 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,9 +13,10 @@ import (
 	"qoder-switch/pkg/ui"
 )
 
+const CurrentVersion = "v1.5.0"
+
 func printHelp() {
-	fmt.Println("Qoder CN / QoderWork CN 账号切换工具 (Go 零依赖版) v1.0")
-	fmt.Println()
+	fmt.Printf("Qoder CN / QoderWork CN 账号切换工具 (Go 零依赖版) %s\n\n", CurrentVersion)
 	fmt.Println("用法:")
 	fmt.Println("  qoder-switch                      交互模式（推荐）")
 	fmt.Println("  qoder-switch save <别名>          保存当前登录态")
@@ -214,6 +217,12 @@ func cmdSwitch(apps []*app.AppConfig, alias, appType string) {
 	accountDir := targetApp.GetAccountDir(alias)
 	if _, err := os.Stat(accountDir); os.IsNotExist(err) {
 		fmt.Printf("[ERROR] 账号 '%s' 在 %s 下不存在，请先保存\n", alias, targetApp.Name)
+		return
+	}
+
+	// Reject incompatible backups before killing the running app
+	if err := targetApp.ValidateBackup(alias); err != nil {
+		fmt.Printf("[ERROR] %v\n", err)
 		return
 	}
 
@@ -546,22 +555,56 @@ func cmdCheckin(apps []*app.AppConfig, appType string) {
 	}
 }
 
+// GitHubRelease struct for parsing GitHub API response
+type GitHubRelease struct {
+	TagName string `json:"tag_name"`
+}
+
 // cmdUpdate handles self-updating the application.
 func cmdUpdate() {
 	fmt.Println("\033[1m============================================\033[0m")
 	fmt.Println("\033[1m  在线更新 Qoder Account Switcher\033[0m")
 	fmt.Println("\033[1m============================================\033[0m")
 	fmt.Println()
-	fmt.Println("[INFO] 正在获取最新版本并安装...")
+	
+	fmt.Printf("[INFO] 当前版本: %s\n", CurrentVersion)
+	fmt.Println("[INFO] 正在检查最新版本...")
+	
+	// Fetch latest release from GitHub API
+	client := http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("https://api.github.com/repos/vpen66/qoder-account-switcher/releases/latest")
+	if err == nil {
+		defer resp.Body.Close()
+		if resp.StatusCode == 200 {
+			var release GitHubRelease
+			if err := json.NewDecoder(resp.Body).Decode(&release); err == nil {
+				latestVersion := release.TagName
+				fmt.Printf("[INFO] 发现最新版本: %s\n", latestVersion)
+				if latestVersion == CurrentVersion {
+					fmt.Println("[INFO] 当前已是最新版本，无需更新！")
+					return
+				}
+				fmt.Println("[INFO] 正在获取最新版本并安装...")
+			} else {
+				fmt.Println("[WARN] 解析版本信息失败，将尝试强制更新...")
+			}
+		} else {
+			fmt.Printf("[WARN] 无法获取最新版本信息 (HTTP %d)，将尝试强制更新...\n", resp.StatusCode)
+		}
+	} else {
+		fmt.Printf("[WARN] 网络请求失败 (%v)，将尝试强制更新...\n", err)
+	}
 
 	cmd := exec.Command("bash", "-c", "curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/master/install.sh | bash")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		fmt.Printf("\n[ERROR] 更新执行失败: %v\n", err)
 		fmt.Println("[HINT] 如果你的环境不支持自动更新，请手动在终端（macOS）或 Git Bash（Windows）中运行以下命令：")
 		fmt.Println("       curl -fsSL https://raw.githubusercontent.com/vpen66/qoder-account-switcher/master/install.sh | bash")
+	} else {
+		fmt.Println("\n[INFO] 更新完成！")
 	}
 }

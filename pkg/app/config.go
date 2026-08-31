@@ -13,13 +13,21 @@ import (
 
 // AppConfig holds configuration for a target application.
 type AppConfig struct {
-	Type        string
-	Name        string
-	AppDataDir  string
-	Files       []string
-	WinProcess  string
-	WinExe      string
-	MacBundle   string
+	Type string
+	Name string
+	// AppDataDir is the application's user data directory.
+	AppDataDir string
+	// AuthFile is the primary credential file used to detect and compare login state.
+	AuthFile string
+	// Legacy marks the old "Qoder CN IDE" data layout (QoderCN dir, auth-v2.dat + SQLite secrets).
+	Legacy bool
+	Files     []string
+	WinProcess string
+	WinExe     string
+	MacBundle  string
+	// CryptoService is the Electron application name whose "<name> Safe Storage"
+	// keychain entry (macOS) encrypts the auth file.
+	CryptoService string
 }
 
 // AccountMeta holds metadata about a saved account.
@@ -61,59 +69,75 @@ func NewAppConfig(appType string) (*AppConfig, error) {
 		return nil, fmt.Errorf("failed to get home directory: %w", err)
 	}
 
-	var appDataDir string
-	if runtime.GOOS == "windows" {
-		appDataDir = filepath.Join(os.Getenv("APPDATA"), appType)
-		// Special folder names
-		if appType == "qodercn" {
-			appDataDir = filepath.Join(os.Getenv("APPDATA"), "QoderCN")
-		} else if appType == "qoderwork" {
-			appDataDir = filepath.Join(os.Getenv("APPDATA"), "QoderWork CN")
-		}
-	} else if runtime.GOOS == "darwin" {
-		if appType == "qodercn" {
-			appDataDir = filepath.Join(home, "Library", "Application Support", "QoderCN")
-		} else if appType == "qoderwork" {
-			appDataDir = filepath.Join(home, "Library", "Application Support", "QoderWork CN")
-		}
-	} else {
-		// Linux fallback
-		if appType == "qodercn" {
-			appDataDir = filepath.Join(home, ".config", "QoderCN")
-		} else if appType == "qoderwork" {
-			appDataDir = filepath.Join(home, ".config", "QoderWork CN")
-		}
-	}
-
 	if appType == "qodercn" {
-		return &AppConfig{
-			Type:       "qodercn",
-			Name:       "Qoder CN",
-			AppDataDir: appDataDir,
-			Files: []string{
+		// New "Qoder CN" app (com.qodercn.app) keeps its data in
+		// <appData>/com.qodercn.app.stable per product.json dataDirectoryName.
+		// The legacy "Qoder CN IDE" used <appData>/QoderCN.
+		var newDir, legacyDir string
+		if runtime.GOOS == "windows" {
+			newDir = filepath.Join(os.Getenv("APPDATA"), "com.qodercn.app.stable")
+			legacyDir = filepath.Join(os.Getenv("APPDATA"), "QoderCN")
+		} else if runtime.GOOS == "darwin" {
+			newDir = filepath.Join(home, "Library", "Application Support", "com.qodercn.app.stable")
+			legacyDir = filepath.Join(home, "Library", "Application Support", "QoderCN")
+		} else {
+			newDir = filepath.Join(home, ".config", "com.qodercn.app.stable")
+			legacyDir = filepath.Join(home, ".config", "QoderCN")
+		}
+
+		legacy := false
+		appDataDir := newDir
+		if _, err := os.Stat(newDir); os.IsNotExist(err) {
+			appDataDir = legacyDir
+			legacy = true
+		}
+
+		cfg := &AppConfig{
+			Type:          "qodercn",
+			Name:          "Qoder CN",
+			AppDataDir:    appDataDir,
+			AuthFile:      "auth.v1.dat",
+			Legacy:        legacy,
+			Files:         []string{"auth.v1.dat"},
+			WinProcess:    "Qoder CN App.exe",
+			WinExe:        "Qoder CN App.exe",
+			MacBundle:     "Qoder CN",
+			CryptoService: "Qoder CN App",
+		}
+		if legacy {
+			cfg.AuthFile = "auth-v2.dat"
+			cfg.Files = []string{
 				"auth-v2.dat",
 				filepath.Join("SharedClientCache", "cache", "user"),
 				filepath.Join("SharedClientCache", "cache", "quota"),
 				filepath.Join("SharedClientCache", "cache", "id"),
 				filepath.Join("SharedClientCache", "cache", "cache.json"),
 				filepath.Join("SharedClientCache", "cache", "app-config.json"),
-			},
-			WinProcess: "QoderCN.exe",
-			WinExe:     "QoderCN.exe",
-			MacBundle:  "Qoder CN",
-		}, nil
+			}
+			cfg.WinProcess = "QoderCN.exe"
+			cfg.WinExe = "QoderCN.exe"
+			cfg.CryptoService = "Qoder CN"
+		}
+		return cfg, nil
 	} else if appType == "qoderwork" {
+		var appDataDir string
+		if runtime.GOOS == "windows" {
+			appDataDir = filepath.Join(os.Getenv("APPDATA"), "QoderWork CN")
+		} else if runtime.GOOS == "darwin" {
+			appDataDir = filepath.Join(home, "Library", "Application Support", "QoderWork CN")
+		} else {
+			appDataDir = filepath.Join(home, ".config", "QoderWork CN")
+		}
 		return &AppConfig{
-			Type:       "qoderwork",
-			Name:       "QoderWork CN",
-			AppDataDir: appDataDir,
-			Files: []string{
-				"auth-v2.dat",
-				"auth.dat",
-			},
-			WinProcess: "QoderWork CN.exe",
-			WinExe:     "QoderWork CN.exe",
-			MacBundle:  "QoderWork CN",
+			Type:          "qoderwork",
+			Name:          "QoderWork CN",
+			AppDataDir:    appDataDir,
+			AuthFile:      "auth-v2.dat",
+			Files:         []string{"auth-v2.dat", "auth.dat"},
+			WinProcess:    "QoderWork CN.exe",
+			WinExe:        "QoderWork CN.exe",
+			MacBundle:     "QoderWork CN",
+			CryptoService: "QoderWork CN",
 		}, nil
 	}
 

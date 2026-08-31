@@ -92,7 +92,7 @@ func BatchCheckinQoderWork(c *AppConfig) {
 			continue
 		}
 
-		decrypted, err := crypto.Decrypt(raw, c.Name)
+		decrypted, err := crypto.Decrypt(raw, c.CryptoService)
 		if err != nil {
 			fmt.Printf("  \033[31m[失败]\033[0m 解密失败: %v\n", err)
 			failedCount++

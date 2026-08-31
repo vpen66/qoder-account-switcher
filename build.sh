@@ -24,7 +24,14 @@ CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o "${DIST_DIR}
 echo "正在编译 macOS (Apple Silicon - arm64)..."
 CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o "${DIST_DIR}/qoder-switch-macos-arm64" main.go
 
-# 3. 编译 Windows (64位)
+# 3. 重新签名 macOS arm64 二进制（Go 1.24+ 的 -s -w 会破坏 ad-hoc 签名）
+if command -v codesign >/dev/null 2>&1; then
+    echo "正在重新签名 macOS arm64 二进制..."
+    codesign -f -s - "${DIST_DIR}/qoder-switch-macos-amd64"
+    codesign -f -s - "${DIST_DIR}/qoder-switch-macos-arm64"
+fi
+
+# 4. 编译 Windows (64位)
 echo "正在编译 Windows (amd64)..."
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o "${DIST_DIR}/qoder-switch-windows-amd64.exe" main.go
 
