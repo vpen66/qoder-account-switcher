@@ -25,7 +25,9 @@ type checkInStatusResponse struct {
 
 type refreshResponse struct {
 	DeviceToken string `json:"deviceToken"`
-	Token       string `json:"token"`
+	// Qoder CN 的刷新接口返回 snake_case 的字段名。
+	DeviceTokenSnake string `json:"device_token"`
+	Token            string `json:"token"`
 }
 
 const (
@@ -253,6 +255,9 @@ func refreshToken(client *http.Client, rToken string) (string, error) {
 
 	if data.DeviceToken != "" {
 		return data.DeviceToken, nil
+	}
+	if data.DeviceTokenSnake != "" {
+		return data.DeviceTokenSnake, nil
 	}
 	return data.Token, nil
 }

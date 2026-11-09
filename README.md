@@ -77,7 +77,11 @@ qoder-switch list
 # 5. 删除账号备份
 qoder-switch delete work_main
 
-# 6. 查看帮助
+# 6. 批量签到（Qoder CN 每日 100 Credits / QoderWork CN 每日签到）
+qoder-switch checkin            # 默认签到所有应用
+qoder-switch checkin qodercn    # 只签到 Qoder CN
+
+# 7. 查看帮助
 qoder-switch help
 ```
 

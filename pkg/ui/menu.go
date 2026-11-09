@@ -143,13 +143,7 @@ func SelectOperation(appName string) (string, error) {
 		"删除账号   (删除某个账号备份)",
 		"查看状态   (查看该应用当前的登录状态)",
 	}
-	if strings.Contains(appName, "QoderWork") {
-		opLabels = append(opLabels, "批量签到   (QoderWork CN 所有账号签到)")
-	} else {
-		// Just to align indices if not QoderWork, although ops is static, 
-		// we'll handle the selection based on actual length of opLabels.
-		ops = []string{"switch", "save", "list", "delete", "status"}
-	}
+	opLabels = append(opLabels, "批量签到   (该应用所有已保存账号自动签到)")
 
 	opLabels = append(opLabels, "在线更新   (将本工具更新到最新版)")
 	ops = append(ops, "update")

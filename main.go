@@ -24,7 +24,8 @@ func printHelp() {
 	fmt.Println("  qoder-switch switch <别名>        切换到指定账号")
 	fmt.Println("  qoder-switch delete <别名>        删除某个账号备份")
 	fmt.Println("  qoder-switch status               显示应用的登录状态")
-	fmt.Println("  qoder-switch checkin              批量签到 QoderWork CN 所有已保存账号")
+	fmt.Println("  qoder-switch checkin [qodercn|qoderwork|all]")
+	fmt.Println("                                    批量签到已保存账号（默认 all）")
 	fmt.Println("  qoder-switch update               在线更新本工具到最新版")
 	fmt.Println("  qoder-switch help                 显示此帮助信息")
 }
@@ -88,7 +89,7 @@ func main() {
 	case "status", "stat":
 		cmdStatus(apps)
 	case "checkin":
-		appType := "qoderwork"
+		appType := ""
 		if len(args) > 1 {
 			appType = args[1]
 		}
@@ -537,21 +538,27 @@ func runInteractive(apps []*app.AppConfig) {
 	}
 }
 
-// cmdCheckin handles batch check-in for qoderwork accounts.
+// cmdCheckin handles batch check-in for saved accounts.
+// appType 为空或 "all" 时签到两个应用，否则只签到指定应用（qodercn / qoderwork）。
 func cmdCheckin(apps []*app.AppConfig, appType string) {
-	if appType != "qoderwork" {
-		fmt.Printf("[ERROR] 目前批量签到功能仅支持 qoderwork (QoderWork CN)\n")
-		return
-	}
-	var targetApp *app.AppConfig
+	var targets []*app.AppConfig
 	for _, a := range apps {
-		if a.Type == appType {
-			targetApp = a
-			break
+		if appType == "" || appType == "all" || appType == a.Type {
+			targets = append(targets, a)
 		}
 	}
-	if targetApp != nil {
-		app.BatchCheckinQoderWork(targetApp)
+	if len(targets) == 0 {
+		fmt.Printf("[ERROR] 未知应用类型: %s（可选: qodercn / qoderwork / all）\n", appType)
+		return
+	}
+
+	for _, targetApp := range targets {
+		switch targetApp.Type {
+		case "qodercn":
+			app.BatchCheckinQoderCN(targetApp)
+		case "qoderwork":
+			app.BatchCheckinQoderWork(targetApp)
+		}
 	}
 }
 
