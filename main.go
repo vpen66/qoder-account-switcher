@@ -13,7 +13,7 @@ import (
 	"qoder-switch/pkg/ui"
 )
 
-const CurrentVersion = "v1.5.0"
+const CurrentVersion = "v1.6.1"
 
 func printHelp() {
 	fmt.Printf("Qoder CN / QoderWork CN 账号切换工具 (Go 零依赖版) %s\n\n", CurrentVersion)

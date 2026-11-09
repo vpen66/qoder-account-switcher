@@ -90,22 +90,62 @@ TARGET_FILE="${INSTALL_DIR}/qoder-switch"
 info "正在从 GitHub 下载最新版本..."
 info "链接: ${DOWNLOAD_URL}"
 
-# 创建临时下载文件
-TEMP_FILE=$(mktemp)
-# mktemp on Windows Git Bash creates under /tmp, curl handles it fine
+# 临时文件放在安装目录内：下载完成后用同目录 mv 原子替换。
+# 不能"原地覆盖"改写已签名的二进制文件——macOS 会因签名页缓存失效而把它 SIGKILL。
+TEMP_FILE=$(mktemp "${TARGET_FILE}.XXXXXX") || die "无法在安装目录创建临时文件"
+trap 'rm -f "$TEMP_FILE"' EXIT
 
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSL "$DOWNLOAD_URL" -o "$TEMP_FILE" || die "下载失败，请检查网络或 GitHub 仓库地址"
-elif command -v wget >/dev/null 2>&1; then
-    wget -qO "$TEMP_FILE" "$DOWNLOAD_URL" || die "下载失败，请检查网络或 GitHub 仓库地址"
-else
+HAVE_CURL=0
+command -v curl >/dev/null 2>&1 && HAVE_CURL=1
+HAVE_WGET=0
+command -v wget >/dev/null 2>&1 && HAVE_WGET=1
+if [ "$HAVE_CURL" = 0 ] && [ "$HAVE_WGET" = 0 ]; then
     die "未检测到 curl 或 wget，请先安装下载工具"
 fi
 
-# 移动到目标路径并赋予执行权限
+# 直链下载失败时，改用 GitHub API 的 release asset 端点（同一个文件）。
+# releases/download 直链偶尔会被 GitHub 边缘节点返回 504，API 端点通常仍可用。
+resolve_asset_id() {
+    [ "$HAVE_CURL" = 1 ] || return 1
+    local api="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest"
+    local json asset_id
+    json="$(curl -fsSL "$api" 2>/dev/null)" || return 1
+    asset_id="$(printf '%s' "$json" \
+        | grep -B 5 -F "\"name\": \"${ASSET_NAME}\"" \
+        | sed -n 's|.*/releases/assets/\([0-9][0-9]*\)".*|\1|p' \
+        | head -n 1)"
+    [ -n "$asset_id" ] || return 1
+    printf '%s' "$asset_id"
+}
+
+download_binary() {
+    if [ "$HAVE_CURL" = 1 ]; then
+        curl -fsSL --retry 2 --retry-delay 2 "$DOWNLOAD_URL" -o "$TEMP_FILE" 2>/dev/null && [ -s "$TEMP_FILE" ] && return 0
+    else
+        wget -qO "$TEMP_FILE" "$DOWNLOAD_URL" && [ -s "$TEMP_FILE" ] && return 0
+    fi
+
+    warn "直链下载失败，改从 GitHub API 获取..."
+    local asset_id
+    asset_id="$(resolve_asset_id || true)"
+    [ -n "$asset_id" ] || return 1
+
+    local asset_api="https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/assets/${asset_id}"
+    if [ "$HAVE_CURL" = 1 ]; then
+        curl -fsSL --retry 2 --retry-delay 2 -H "Accept: application/octet-stream" "$asset_api" -o "$TEMP_FILE" 2>/dev/null && [ -s "$TEMP_FILE" ] && return 0
+    else
+        wget -qO "$TEMP_FILE" --header="Accept: application/octet-stream" "$asset_api" && [ -s "$TEMP_FILE" ] && return 0
+    fi
+    return 1
+}
+
+download_binary || die "下载失败，请检查网络或 GitHub 仓库地址"
+
+# 赋予执行权限后原子替换（同一目录内 rename，生成新的 inode）
 info "正在安装到: ${TARGET_FILE}"
-mv "$TEMP_FILE" "$TARGET_FILE"
-chmod +x "$TARGET_FILE"
+chmod +x "$TEMP_FILE"
+mv -f "$TEMP_FILE" "$TARGET_FILE"
+trap - EXIT
 
 # === 环境配置提示与验证 ===
 verify_installation() {
