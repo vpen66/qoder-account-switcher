@@ -281,7 +281,11 @@ func cmdList(apps []*app.AppConfig) {
 			if acc.IsCurrent {
 				marker = " \033[32m★ 当前使用\033[0m"
 			}
-			fmt.Printf("  \033[32m%s\033[0m  →  %s  (%s)%s\n", acc.Alias, acc.DisplayName, acc.SavedAt, marker)
+			quotaStr := "  \033[33m用量:未知\033[0m"
+			if acc.Quota != "" {
+				quotaStr = "  " + acc.Quota
+			}
+			fmt.Printf("  \033[32m%s\033[0m  →  %s%s  -  %s%s\n", acc.Alias, acc.DisplayName, quotaStr, acc.SavedAt, marker)
 		}
 	}
 	fmt.Println()

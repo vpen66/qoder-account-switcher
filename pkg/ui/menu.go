@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"qoder-switch/pkg/app"
 
@@ -186,6 +187,7 @@ type SavedAccount struct {
 	Alias       string
 	DisplayName string
 	SavedAt     string
+	Quota       string
 	IsCurrent   bool
 }
 
@@ -218,8 +220,13 @@ func SelectAccountInteractive(appConfig *app.AppConfig) (string, error) {
 				currentMarker = " \033[32m[当前使用]\033[0m"
 			}
 
-			// Format display: alias (display_name) - saved_at
-			displayStr := fmt.Sprintf("%s (%s) - %s%s", acc.Alias, acc.DisplayName, acc.SavedAt, currentMarker)
+			quotaStr := "  \033[33m用量:未知\033[0m"
+			if acc.Quota != "" {
+				quotaStr = "  " + acc.Quota
+			}
+
+			// Format display: alias (display_name)   Credits used/total(remaining)  - saved_at
+			displayStr := fmt.Sprintf("%s (%s)%s  - %s%s", acc.Alias, acc.DisplayName, quotaStr, acc.SavedAt, currentMarker)
 
 			if i == idx {
 				fmt.Printf("  \033[7m ▶ %s \033[0m\n", displayStr)
@@ -289,6 +296,19 @@ func GetSavedAccounts(appConfig *app.AppConfig) ([]SavedAccount, error) {
 			})
 		}
 	}
+
+	// Fetch usage for each account in parallel so opening the menu stays fast.
+	var wg sync.WaitGroup
+	for i := range list {
+		wg.Add(1)
+		go func(acc *SavedAccount) {
+			defer wg.Done()
+			if quota, err := appConfig.FetchAccountQuota(acc.Alias); err == nil {
+				acc.Quota = quota.String()
+			}
+		}(&list[i])
+	}
+	wg.Wait()
 
 	return list, nil
 }
